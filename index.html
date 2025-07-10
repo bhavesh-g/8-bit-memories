@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>8-bit-Memories</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #1a202c; color: #e2e8f0; text-align: center; }
+    .resize-box {
+      display: inline-block;
+      position: relative;
+      border: 3px solid #6366f1;
+      border-radius: 8px;
+      background: #222;
+      margin-bottom: 1rem;
+      touch-action: none;
+    }
+    .resize-handle {
+      position: absolute;
+      bottom: 0; right: 0;
+      width: 32px; height: 32px;
+      cursor: nwse-resize;
+      background: rgba(99,102,241,0.6);
+      border-radius: 0 0 8px 0;
+      display: flex; align-items: flex-end; justify-content: flex-end;
+      z-index: 10;
+      user-select: none;
+    }
+    .resize-handle:after {
+      content: "";
+      display: block;
+      width: 18px;
+      height: 18px;
+      border-right: 3px solid #fff;
+      border-bottom: 3px solid #fff;
+      border-radius: 0 0 6px 0;
+      margin: 6px;
+    }
+    .controller {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      gap: 2.5rem;
+      margin-top: 1.5rem;
+      user-select: none;
+    }
+    .dpad {
+      display: grid;
+      grid-template-columns: 48px 48px 48px;
+      grid-template-rows: 48px 48px 48px;
+      gap: 0;
+      align-items: center;
+      justify-items: center;
+    }
+    .dpad-btn {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: #374151;
+      color: #fff;
+      font-size: 1.5rem;
+      border: none;
+      margin: 0;
+      outline: none;
+      touch-action: none;
+    }
+    .dpad-btn:active, .ab-btn:active, .ss-btn:active { background: #6366f1; }
+    .ab-group {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      align-items: center;
+      justify-content: center;
+    }
+    .ab-btn-group {
+      display: flex;
+      flex-direction: row;
+      gap: 24px;
+    }
+    .ab-btn {
+      width: 54px; height: 54px;
+      border-radius: 50%;
+      font-weight: bold;
+      font-size: 1.5rem;
+      border: none;
+      outline: none;
+      background: #be185d;
+      color: #fff;
+      touch-action: none;
+    }
+    .ab-btn.b { background: #2563eb; }
+    .ss-btn-group {
+      display: flex;
+      flex-direction: row;
+      gap: 18px;
+      margin-top: 8px;
+    }
+    .ss-btn {
+      width: 60px; height: 32px;
+      border-radius: 16px;
+      font-weight: bold;
+      border: none;
+      outline: none;
+      background: #6b7280;
+      color: #fff;
+      font-size: 1rem;
+      touch-action: none;
+    }
+    @media (max-width: 600px) {
+      .controller { flex-direction: column; gap: 2rem; }
+      .dpad, .ab-group { margin: 0 auto; }
+    }
+  </style>
+</head>
+<body>
+  <h1 class="text-2xl font-bold mb-4">🎮 8-bit-Memories</h1>
+  <input id="romInput" type="file" accept=".nes" class="mb-4 block mx-auto text-gray-900" />
+
+  <!-- Resizable NES Canvas -->
+  <div id="resizeBox" class="resize-box" style="width: 512px; height: 480px;">
+    <canvas id="nes-canvas" width="256" height="240" style="width:100%;height:100%;display:block;"></canvas>
+    <div class="resize-handle" id="resizeHandle" title="Resize"></div>
+  </div>
+
+  <div class="mt-4 flex gap-2 justify-center">
+    <button id="pauseBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white">Pause</button>
+    <button id="resumeBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-white">Resume</button>
+    <button id="resetBtn" class="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded text-white">Reset</button>
+  </div>
+
+  <!-- On-screen Controller -->
+  <div class="controller select-none">
+    <div class="dpad">
+      <button class="dpad-btn" data-btn="UP" style="grid-column:2;grid-row:1;">▲</button>
+      <button class="dpad-btn" data-btn="LEFT" style="grid-column:1;grid-row:2;">◀</button>
+      <button class="dpad-btn" data-btn="RIGHT" style="grid-column:3;grid-row:2;">▶</button>
+      <button class="dpad-btn" data-btn="DOWN" style="grid-column:2;grid-row:3;">▼</button>
+    </div>
+    <div class="ab-group">
+      <div class="ab-btn-group">
+        <button class="ab-btn a" data-btn="A">A</button>
+        <button class="ab-btn b" data-btn="B">B</button>
+      </div>
+      <div class="ss-btn-group">
+        <button class="ss-btn" data-btn="SELECT">SELECT</button>
+        <button class="ss-btn" data-btn="START">START</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="mt-4 text-xs text-gray-400">Desktop: Arrows = D-pad, Z = A, X = B, Enter = Start, Shift = Select</p>
+  <footer class="text-xs text-gray-500 mt-4">
+    Powered by <a href="https://github.com/bfirsh/jsnes" class="underline" target="_blank">jsNES</a> | No ROMs included.
+  </footer>
+  <script src="https://unpkg.com/jsnes/dist/jsnes.min.js"></script>
+  <script>
+    // --- Emulator State ---
+    const canvas = document.getElementById('nes-canvas');
+    const ctx = canvas.getContext('2d');
+    let nes = new window.jsnes.NES({ onFrame });
+    let animationFrameId = null;
+    let running = false;
+
+    // --- Button Mapping ---
+    const BTN_MAP = {
+      UP: window.jsnes.Controller.BUTTON_UP,
+      DOWN: window.jsnes.Controller.BUTTON_DOWN,
+      LEFT: window.jsnes.Controller.BUTTON_LEFT,
+      RIGHT: window.jsnes.Controller.BUTTON_RIGHT,
+      A: window.jsnes.Controller.BUTTON_A,
+      B: window.jsnes.Controller.BUTTON_B,
+      START: window.jsnes.Controller.BUTTON_START,
+      SELECT: window.jsnes.Controller.BUTTON_SELECT
+    };
+
+    // --- Drawing ---
+    function onFrame(frameBuffer) {
+      const imageData = ctx.getImageData(0, 0, 256, 240);
+      for (let i = 0; i < frameBuffer.length; i++) {
+        const color = frameBuffer[i];
+        imageData.data[i * 4 + 0] = (color >> 16) & 0xFF;
+        imageData.data[i * 4 + 1] = (color >> 8) & 0xFF;
+        imageData.data[i * 4 + 2] = color & 0xFF;
+        imageData.data[i * 4 + 3] = 0xFF;
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // --- Main Loop ---
+    function runFrame() {
+      if (running) {
+        nes.frame();
+        animationFrameId = requestAnimationFrame(runFrame);
+      }
+    }
+
+    // --- ROM Loading ---
+    document.getElementById('romInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function() {
+        nes.loadROM(reader.result);
+        running = true;
+        runFrame();
+      };
+      reader.readAsBinaryString(file);
+    });
+
+    // --- Pause/Resume/Reset ---
+    document.getElementById('pauseBtn').onclick = () => {
+      running = false;
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+    document.getElementById('resumeBtn').onclick = () => {
+      if (!running) {
+        running = true;
+        runFrame();
+      }
+    };
+    document.getElementById('resetBtn').onclick = () => {
+      nes.reset();
+      if (running) runFrame();
+    };
+
+    // --- Keyboard Controls (Desktop Only) ---
+    const KEY_MAP = {
+      38: BTN_MAP.UP,    // Arrow Up
+      40: BTN_MAP.DOWN,  // Arrow Down
+      37: BTN_MAP.LEFT,  // Arrow Left
+      39: BTN_MAP.RIGHT, // Arrow Right
+      90: BTN_MAP.A,     // Z
+      88: BTN_MAP.B,     // X
+      13: BTN_MAP.START, // Enter
+      16: BTN_MAP.SELECT // Shift
+    };
+    window.addEventListener('keydown', e => {
+      if (window.matchMedia('(pointer: fine)').matches) {
+        const btn = KEY_MAP[e.keyCode];
+        if (btn !== undefined) {
+          nes.buttonDown(1, btn);
+          e.preventDefault();
+        }
+      }
+    });
+    window.addEventListener('keyup', e => {
+      if (window.matchMedia('(pointer: fine)').matches) {
+        const btn = KEY_MAP[e.keyCode];
+        if (btn !== undefined) {
+          nes.buttonUp(1, btn);
+          e.preventDefault();
+        }
+      }
+    });
+
+    // --- On-screen Controls (Touch/Mouse) ---
+    const activeTouches = {};
+    document.querySelectorAll('.dpad-btn, .ab-btn, .ss-btn').forEach(el => {
+      const btnStr = el.getAttribute('data-btn');
+      const btn = BTN_MAP[btnStr];
+      // Touch events
+      el.addEventListener('touchstart', function(e) {
+        for (let touch of e.changedTouches) {
+          activeTouches[touch.identifier] = btn;
+          nes.buttonDown(1, btn);
+        }
+        e.preventDefault();
+      }, {passive: false});
+      el.addEventListener('touchend', function(e) {
+        for (let touch of e.changedTouches) {
+          const btn = activeTouches[touch.identifier];
+          if (btn !== undefined) {
+            nes.buttonUp(1, btn);
+            delete activeTouches[touch.identifier];
+          }
+        }
+        e.preventDefault();
+      }, {passive: false});
+      el.addEventListener('touchcancel', function(e) {
+        for (let touch of e.changedTouches) {
+          const btn = activeTouches[touch.identifier];
+          if (btn !== undefined) {
+            nes.buttonUp(1, btn);
+            delete activeTouches[touch.identifier];
+          }
+        }
+        e.preventDefault();
+      }, {passive: false});
+      // Mouse events for desktop testing
+      let mouseDown = false;
+      el.addEventListener('mousedown', function(e) {
+        mouseDown = true;
+        nes.buttonDown(1, btn);
+      });
+      el.addEventListener('mouseup', function(e) {
+        mouseDown = false;
+        nes.buttonUp(1, btn);
+      });
+      el.addEventListener('mouseleave', function(e) {
+        if (mouseDown) {
+          mouseDown = false;
+          nes.buttonUp(1, btn);
+        }
+      });
+    });
+
+    // --- Responsive Canvas & Resizing ---
+    const resizeBox = document.getElementById('resizeBox');
+    const resizeHandle = document.getElementById('resizeHandle');
+    let isResizing = false;
+    let startX, startY, startWidth, startHeight;
+    // Maintain NES aspect ratio (256:240)
+    const NES_RATIO = 256 / 240;
+
+    resizeHandle.addEventListener('mousedown', function(e) {
+      isResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      startWidth = resizeBox.offsetWidth;
+      startHeight = resizeBox.offsetHeight;
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!isResizing) return;
+      let dx = e.clientX - startX;
+      let dy = e.clientY - startY;
+      let newWidth = Math.max(128, startWidth + dx);
+      let newHeight = newWidth / NES_RATIO;
+      resizeBox.style.width = newWidth + 'px';
+      resizeBox.style.height = newHeight + 'px';
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+    });
+    window.addEventListener('mouseup', function(e) {
+      isResizing = false;
+      document.body.style.userSelect = '';
+    });
+
+    // Touch support for resizing
+    resizeHandle.addEventListener('touchstart', function(e) {
+      isResizing = true;
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      startWidth = resizeBox.offsetWidth;
+      startHeight = resizeBox.offsetHeight;
+      e.preventDefault();
+    }, {passive: false});
+    window.addEventListener('touchmove', function(e) {
+      if (!isResizing) return;
+      const touch = e.touches[0];
+      let dx = touch.clientX - startX;
+      let newWidth = Math.max(128, startWidth + dx);
+      let newHeight = newWidth / NES_RATIO;
+      resizeBox.style.width = newWidth + 'px';
+      resizeBox.style.height = newHeight + 'px';
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      e.preventDefault();
+    }, {passive: false});
+    window.addEventListener('touchend', function(e) {
+      isResizing = false;
+    });
+
+    // Initial responsive sizing
+    function setInitialSize() {
+      if (window.innerWidth < 600) {
+        resizeBox.style.width = '98vw';
+        resizeBox.style.height = (98 * 240 / 256) + 'vw';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+      } else {
+        resizeBox.style.width = '512px';
+        resizeBox.style.height = '480px';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+      }
+    }
+    window.addEventListener('resize', setInitialSize);
+    setInitialSize();
+  </script>
+</body>
+</html>
