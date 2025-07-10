@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { background: #1a202c; color: #e2e8f0; text-align: center; }
+    body { background: #1a202c; color: #e2e8f0; text-align: center; margin: 0; }
     .resize-box {
       display: inline-block;
       position: relative;
@@ -15,27 +15,9 @@
       background: #222;
       margin-bottom: 1rem;
       touch-action: none;
-    }
-    .resize-handle {
-      position: absolute;
-      bottom: 0; right: 0;
-      width: 32px; height: 32px;
-      cursor: nwse-resize;
-      background: rgba(99,102,241,0.6);
-      border-radius: 0 0 8px 0;
-      display: flex; align-items: flex-end; justify-content: flex-end;
-      z-index: 10;
-      user-select: none;
-    }
-    .resize-handle:after {
-      content: "";
-      display: block;
-      width: 18px;
-      height: 18px;
-      border-right: 3px solid #fff;
-      border-bottom: 3px solid #fff;
-      border-radius: 0 0 6px 0;
-      margin: 6px;
+      width: 100vw;
+      max-width: 100vw;
+      height: auto;
     }
     .controller {
       display: flex;
@@ -44,6 +26,7 @@
       gap: 2.5rem;
       margin-top: 1.5rem;
       user-select: none;
+      flex-wrap: wrap;
     }
     .dpad {
       display: grid;
@@ -106,28 +89,31 @@
       font-size: 1rem;
       touch-action: none;
     }
+    @media (max-width: 900px) {
+      .resize-box { width: 98vw !important; max-width: 98vw !important; }
+      #nes-canvas { width: 100vw !important; height: auto !important; max-width: 100vw !important; }
+      .controller { flex-direction: column; gap: 2rem; }
+      .dpad, .ab-group { margin: 0 auto; }
+    }
     @media (max-width: 600px) {
+      .resize-box { width: 100vw !important; max-width: 100vw !important; }
+      #nes-canvas { width: 100vw !important; height: auto !important; max-width: 100vw !important; }
       .controller { flex-direction: column; gap: 2rem; }
       .dpad, .ab-group { margin: 0 auto; }
     }
   </style>
 </head>
 <body>
-  <h1 class="text-2xl font-bold mb-4">🎮 8-bit-Memories</h1>
-  <input id="romInput" type="file" accept=".nes" class="mb-4 block mx-auto text-gray-900" />
-
-  <!-- Resizable NES Canvas -->
-  <div id="resizeBox" class="resize-box" style="width: 512px; height: 480px;">
-    <canvas id="nes-canvas" width="256" height="240" style="width:100%;height:100%;display:block;"></canvas>
-    <div class="resize-handle" id="resizeHandle" title="Resize"></div>
+  <h1 class="text-3xl font-bold mb-4">8-bit-Memories</h1>
+  <input id="romInput" type="file" accept=".nes" class="mb-4 block mx-auto text-gray-900" multiple="false" />
+  <div id="resizeBox" class="resize-box">
+    <canvas id="nes-canvas" width="256" height="240" style="width:100%;height:auto;display:block;"></canvas>
   </div>
-
   <div class="mt-4 flex gap-2 justify-center">
     <button id="pauseBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white">Pause</button>
     <button id="resumeBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-white">Resume</button>
     <button id="resetBtn" class="bg-yellow-500 hover:bg-yellow-600 px-4 py-2 rounded text-white">Reset</button>
   </div>
-
   <!-- On-screen Controller -->
   <div class="controller select-none">
     <div class="dpad">
@@ -147,7 +133,6 @@
       </div>
     </div>
   </div>
-
   <p class="mt-4 text-xs text-gray-400">Desktop: Arrows = D-pad, Z = A, X = B, Enter = Start, Shift = Select</p>
   <footer class="text-xs text-gray-500 mt-4">
     Powered by <a href="https://github.com/bfirsh/jsnes" class="underline" target="_blank">jsNES</a> | No ROMs included.
@@ -194,10 +179,22 @@
       }
     }
 
-    // --- ROM Loading ---
+    // --- ROM Loading (single .nes only) ---
     document.getElementById('romInput').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
+      // Only allow .nes
+      if (!file.name.toLowerCase().endsWith('.nes')) {
+        alert('Only .nes files are allowed!');
+        e.target.value = '';
+        return;
+      }
+      // Only allow one file
+      if (e.target.files.length !== 1) {
+        alert('Please select only one .nes file.');
+        e.target.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onload = function() {
         nes.loadROM(reader.result);
@@ -304,81 +301,24 @@
       });
     });
 
-    // --- Responsive Canvas & Resizing ---
-    const resizeBox = document.getElementById('resizeBox');
-    const resizeHandle = document.getElementById('resizeHandle');
-    let isResizing = false;
-    let startX, startY, startWidth, startHeight;
-    // Maintain NES aspect ratio (256:240)
-    const NES_RATIO = 256 / 240;
-
-    resizeHandle.addEventListener('mousedown', function(e) {
-      isResizing = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      startWidth = resizeBox.offsetWidth;
-      startHeight = resizeBox.offsetHeight;
-      document.body.style.userSelect = 'none';
-      e.preventDefault();
-    });
-    window.addEventListener('mousemove', function(e) {
-      if (!isResizing) return;
-      let dx = e.clientX - startX;
-      let dy = e.clientY - startY;
-      let newWidth = Math.max(128, startWidth + dx);
-      let newHeight = newWidth / NES_RATIO;
-      resizeBox.style.width = newWidth + 'px';
-      resizeBox.style.height = newHeight + 'px';
+    // --- Responsive Canvas & Fit-to-Screen ---
+    function fitCanvasToScreen() {
+      // Fit width to viewport, keep NES aspect ratio, leave space for controller
+      const controllerHeight = document.querySelector('.controller').offsetHeight || 200;
+      const availableHeight = window.innerHeight - controllerHeight - 160; // 160px for header/buttons/margins
+      const availableWidth = window.innerWidth - 16;
+      let width = Math.min(availableWidth, availableHeight * (256/240));
+      let height = width * (240/256);
+      if (width < 128) { width = 128; height = width * (240/256);}
+      const resizeBox = document.getElementById('resizeBox');
+      resizeBox.style.width = width + 'px';
+      resizeBox.style.height = height + 'px';
       canvas.style.width = '100%';
       canvas.style.height = '100%';
-    });
-    window.addEventListener('mouseup', function(e) {
-      isResizing = false;
-      document.body.style.userSelect = '';
-    });
-
-    // Touch support for resizing
-    resizeHandle.addEventListener('touchstart', function(e) {
-      isResizing = true;
-      const touch = e.touches[0];
-      startX = touch.clientX;
-      startY = touch.clientY;
-      startWidth = resizeBox.offsetWidth;
-      startHeight = resizeBox.offsetHeight;
-      e.preventDefault();
-    }, {passive: false});
-    window.addEventListener('touchmove', function(e) {
-      if (!isResizing) return;
-      const touch = e.touches[0];
-      let dx = touch.clientX - startX;
-      let newWidth = Math.max(128, startWidth + dx);
-      let newHeight = newWidth / NES_RATIO;
-      resizeBox.style.width = newWidth + 'px';
-      resizeBox.style.height = newHeight + 'px';
-      canvas.style.width = '100%';
-      canvas.style.height = '100%';
-      e.preventDefault();
-    }, {passive: false});
-    window.addEventListener('touchend', function(e) {
-      isResizing = false;
-    });
-
-    // Initial responsive sizing
-    function setInitialSize() {
-      if (window.innerWidth < 600) {
-        resizeBox.style.width = '98vw';
-        resizeBox.style.height = (98 * 240 / 256) + 'vw';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-      } else {
-        resizeBox.style.width = '512px';
-        resizeBox.style.height = '480px';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-      }
     }
-    window.addEventListener('resize', setInitialSize);
-    setInitialSize();
+    window.addEventListener('resize', fitCanvasToScreen);
+    window.addEventListener('orientationchange', fitCanvasToScreen);
+    fitCanvasToScreen();
   </script>
 </body>
 </html>
